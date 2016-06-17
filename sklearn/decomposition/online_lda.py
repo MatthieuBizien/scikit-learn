@@ -231,6 +231,10 @@ class LatentDirichletAllocation(BaseEstimator, TransformerMixin):
 
     n_iter_ : int
         Number of passes over the dataset.
+      
+    perplexity_ : array, [max_iter]
+        Perplexity on the train set. Only defined if the fit method have been 
+        called with evaluate_every>0
 
     References
     ----------
@@ -503,6 +507,9 @@ class LatentDirichletAllocation(BaseEstimator, TransformerMixin):
 
         # initialize parameters
         self._init_latent_vars(n_features)
+        if evaluate_every > 0:
+          self.perplexity_ = np.array([np.NAN for _ in range(max_iter)])
+          
         # change to perplexity later
         last_bound = None
         n_jobs = _get_n_jobs(self.n_jobs)
@@ -522,15 +529,15 @@ class LatentDirichletAllocation(BaseEstimator, TransformerMixin):
                     doc_topics_distr, _ = self._e_step(X, cal_sstats=False,
                                                        random_init=False,
                                                        parallel=parallel)
-                    bound = self.perplexity(X, doc_topics_distr,
-                                            sub_sampling=False)
+                    self.perplexity_[i] = self.perplexity(X, doc_topics_distr,
+                                                         sub_sampling=False)
                     if self.verbose:
                         print('iteration: %d, perplexity: %.4f'
-                              % (i + 1, bound))
+                              % (i + 1, self.perplexity_[i]))
 
-                    if last_bound and abs(last_bound - bound) < self.perp_tol:
+                    if last_bound and abs(last_bound - self.perplexity_[i]) < self.perp_tol:
                         break
-                    last_bound = bound
+                    last_bound = self.perplexity_[i]
                 self.n_iter_ += 1
         return self
 
