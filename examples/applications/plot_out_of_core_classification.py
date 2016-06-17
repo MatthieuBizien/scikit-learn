@@ -33,23 +33,18 @@ from glob import glob
 import itertools
 import os.path
 import re
-try:
-    from html.parser import HTMLParser
-    PY2 = False
-except ImportError:
-    from sgmllib import SGMLParser as HTMLParser
-    PY2 = True
 import tarfile
 import time
-import urllib
 
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import rcParams
 
+from sklearn.externals.six.moves import html_parser
+from sklearn.externals.six.moves import urllib
 from sklearn.datasets import get_data_home
 from sklearn.feature_extraction.text import HashingVectorizer
-from sklearn.linear_model.stochastic_gradient import SGDClassifier
+from sklearn.linear_model import SGDClassifier
 from sklearn.linear_model import PassiveAggressiveClassifier
 from sklearn.linear_model import Perceptron
 from sklearn.naive_bayes import MultinomialNB
@@ -65,25 +60,21 @@ def _not_in_sphinx():
 ###############################################################################
 
 
-class ReutersParser(HTMLParser):
+class ReutersParser(html_parser.HTMLParser):
     """Utility class to parse a SGML file and yield documents one at a time."""
 
-    def __init__(self, verbose=0, encoding='latin-1'):
-        HTMLParser.__init__(self, verbose)
+    def __init__(self, encoding='latin-1'):
+        html_parser.HTMLParser.__init__(self)
         self._reset()
         self.encoding = encoding
 
-        if not PY2:
-            # In Python 3 need to be defined explicitly
-            def handle_starttag(tag, attrs):
-                method = 'start_' + tag
-                getattr(self, method, lambda x: None)(attrs)
-            self.handle_starttag = handle_starttag
+    def handle_starttag(self, tag, attrs):
+        method = 'start_' + tag
+        getattr(self, method, lambda x: None)(attrs)
 
-            def handle_endtag(tag):
-                method = 'end_' + tag
-                getattr(self, method, lambda: None)()
-            self.handle_endtag = handle_endtag
+    def handle_endtag(self, tag):
+        method = 'end_' + tag
+        getattr(self, method, lambda: None)()
 
     def _reset(self):
         self.in_title = 0
@@ -180,8 +171,8 @@ def stream_reuters_documents(data_path=None):
                       end='')
 
         archive_path = os.path.join(data_path, ARCHIVE_FILENAME)
-        urllib.urlretrieve(DOWNLOAD_URL, filename=archive_path,
-                           reporthook=progress)
+        urllib.request.urlretrieve(DOWNLOAD_URL, filename=archive_path,
+                                   reporthook=progress)
         if _not_in_sphinx():
             print('\r', end='')
         print("untarring Reuters dataset...")
@@ -293,7 +284,7 @@ minibatch_size = 1000
 minibatch_iterators = iter_minibatches(data_stream, minibatch_size)
 total_vect_time = 0.0
 
-# Main loop : iterate on mini-batchs of examples
+# Main loop : iterate on mini-batches of examples
 for i, (X_train_text, y_train) in enumerate(minibatch_iterators):
 
     tick = time.time()
@@ -371,7 +362,7 @@ for cls_name, stats in sorted(cls_stats.items()):
 
 cls_runtime.append(total_vect_time)
 cls_names.append('Vectorization')
-bar_colors = rcParams['axes.color_cycle'][:len(cls_names)]
+bar_colors = ['b', 'g', 'r', 'c', 'm', 'y']
 
 ax = plt.subplot(111)
 rectangles = plt.bar(range(len(cls_names)), cls_runtime, width=0.5,
@@ -398,7 +389,6 @@ plt.show()
 
 # Plot prediction times
 plt.figure()
-#fig = plt.gcf()
 cls_runtime = []
 cls_names = list(sorted(cls_stats.keys()))
 for cls_name, stats in sorted(cls_stats.items()):
@@ -407,7 +397,6 @@ cls_runtime.append(parsing_time)
 cls_names.append('Read/Parse\n+Feat.Extr.')
 cls_runtime.append(vectorizing_time)
 cls_names.append('Hashing\n+Vect.')
-bar_colors = rcParams['axes.color_cycle'][:len(cls_names)]
 
 ax = plt.subplot(111)
 rectangles = plt.bar(range(len(cls_names)), cls_runtime, width=0.5,

@@ -13,7 +13,7 @@ from ..utils.extmath import cartesian
 from ..externals.joblib import Parallel, delayed
 from ..externals import six
 from ..externals.six.moves import map, range, zip
-from ..utils import array2d
+from ..utils import check_array
 from ..tree._tree import DTYPE
 
 from ._gradient_boosting import _partial_dependence_tree
@@ -76,6 +76,8 @@ def partial_dependence(gbrt, target_variables, grid=None, X=None,
     of the ``target_variables`` and the function represented
     by the ``gbrt``.
 
+    Read more in the :ref:`User Guide <partial_dependence>`.
+
     Parameters
     ----------
     gbrt : BaseGradientBoosting
@@ -133,7 +135,7 @@ def partial_dependence(gbrt, target_variables, grid=None, X=None,
                          % (gbrt.n_features - 1))
 
     if X is not None:
-        X = array2d(X, dtype=DTYPE, order='C')
+        X = check_array(X, dtype=DTYPE, order='C')
         grid, axes = _grid_from_X(X[:, target_variables], percentiles,
                                   grid_resolution)
     else:
@@ -173,6 +175,8 @@ def plot_partial_dependence(gbrt, X, features, feature_names=None,
     columns. Two-way partial dependence plots are plotted as contour
     plots.
 
+    Read more in the :ref:`User Guide <partial_dependence>`.
+
     Parameters
     ----------
     gbrt : BaseGradientBoosting
@@ -192,7 +196,7 @@ def plot_partial_dependence(gbrt, X, features, feature_names=None,
     n_cols : int
         The number of columns in the grid plot (default: 3).
     percentiles : (low, high), default=(0.05, 0.95)
-        The lower and upper percentile used create the extreme values
+        The lower and upper percentile used to create the extreme values
         for the PDP axes.
     grid_resolution : int, default=100
         The number of equally spaced points on the axes.
@@ -204,10 +208,10 @@ def plot_partial_dependence(gbrt, X, features, feature_names=None,
     ax : Matplotlib axis object, default None
         An axis object onto which the plots will be drawn.
     line_kw : dict
-        Dict with keywords passed to the ``pylab.plot`` call.
+        Dict with keywords passed to the ``matplotlib.pyplot.plot`` call.
         For one-way partial dependence plots.
     contour_kw : dict
-        Dict with keywords passed to the ``pylab.plot`` call.
+        Dict with keywords passed to the ``matplotlib.pyplot.plot`` call.
         For two-way partial dependence plots.
     fig_kw : dict
         Dict with keywords passed to the figure() call.
@@ -252,7 +256,7 @@ def plot_partial_dependence(gbrt, X, features, feature_names=None,
         # regression and binary classification
         label_idx = 0
 
-    X = array2d(X, dtype=DTYPE, order='C')
+    X = check_array(X, dtype=DTYPE, order='C')
     if gbrt.n_features != X.shape[1]:
         raise ValueError('X.shape[1] does not match gbrt.n_features')
 
@@ -308,7 +312,8 @@ def plot_partial_dependence(gbrt, X, features, feature_names=None,
     # compute PD functions
     pd_result = Parallel(n_jobs=n_jobs, verbose=verbose)(
         delayed(partial_dependence)(gbrt, fxs, X=X,
-                                    grid_resolution=grid_resolution)
+                                    grid_resolution=grid_resolution,
+                                    percentiles=percentiles)
         for fxs in features)
 
     # get global min and max values of PD grouped by plot type

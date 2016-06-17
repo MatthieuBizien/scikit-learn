@@ -33,7 +33,7 @@ Examples
 >>> from sklearn.semi_supervised import LabelPropagation
 >>> label_prop_model = LabelPropagation()
 >>> iris = datasets.load_iris()
->>> random_unlabeled_points = np.where(np.random.random_integers(0, 1,
+>>> random_unlabeled_points = np.where(np.random.randint(0, 2,
 ...        size=len(iris.target)))
 >>> labels = np.copy(iris.target)
 >>> labels[random_unlabeled_points] = -1
@@ -52,20 +52,23 @@ Non-Parametric Function Induction in Semi-Supervised Learning. AISTAT 2005
 """
 
 # Authors: Clay Woolam <clay@woolam.org>
-# Licence: BSD
+# License: BSD
 from abc import ABCMeta, abstractmethod
-from scipy import sparse
+
 import numpy as np
+from scipy import sparse
 
 from ..base import BaseEstimator, ClassifierMixin
-from ..metrics.pairwise import rbf_kernel
-from ..utils.graph import graph_laplacian
-from ..utils.extmath import safe_sparse_dot
 from ..externals import six
+from ..metrics.pairwise import rbf_kernel
 from ..neighbors.unsupervised import NearestNeighbors
+from ..utils.extmath import safe_sparse_dot
+from ..utils.graph import graph_laplacian
+from ..utils.multiclass import check_classification_targets
+from ..utils.validation import check_X_y, check_is_fitted, check_array
 
 
-### Helper functions
+# Helper functions
 
 def _not_converged(y_truth, y_prediction, tol=1e-3):
     """basic convergence check"""
@@ -95,10 +98,17 @@ class BaseLabelPropagation(six.with_metaclass(ABCMeta, BaseEstimator,
         Convergence tolerance: threshold to consider the system at steady
         state
 
+    n_neighbors : integer > 0
+        Parameter for knn kernel
+
+    n_jobs : int, optional (default = 1)
+        The number of parallel jobs to run.
+        If ``-1``, then the number of jobs is set to the number of CPU cores.
+
     """
 
     def __init__(self, kernel='rbf', gamma=20, n_neighbors=7,
-                 alpha=1, max_iter=30, tol=1e-3):
+                 alpha=1, max_iter=30, tol=1e-3, n_jobs=1):
 
         self.max_iter = max_iter
         self.tol = tol
@@ -111,6 +121,8 @@ class BaseLabelPropagation(six.with_metaclass(ABCMeta, BaseEstimator,
         # clamping factor
         self.alpha = alpha
 
+        self.n_jobs = n_jobs
+
     def _get_kernel(self, X, y=None):
         if self.kernel == "rbf":
             if y is None:
@@ -119,7 +131,8 @@ class BaseLabelPropagation(six.with_metaclass(ABCMeta, BaseEstimator,
                 return rbf_kernel(X, y, gamma=self.gamma)
         elif self.kernel == "knn":
             if self.nn_fit is None:
-                self.nn_fit = NearestNeighbors(self.n_neighbors).fit(X)
+                self.nn_fit = NearestNeighbors(self.n_neighbors,
+                                               n_jobs=self.n_jobs).fit(X)
             if y is None:
                 return self.nn_fit.kneighbors_graph(self.nn_fit._fit_X,
                                                     self.n_neighbors,
@@ -167,10 +180,10 @@ class BaseLabelPropagation(six.with_metaclass(ABCMeta, BaseEstimator,
             Normalized probability distributions across
             class labels
         """
-        if sparse.isspmatrix(X):
-            X_2d = X
-        else:
-            X_2d = np.atleast_2d(X)
+        check_is_fitted(self, 'X_')
+
+        X_2d = check_array(X, accept_sparse=['csc', 'csr', 'coo', 'dok',
+                                             'bsr', 'lil', 'dia'])
         weight_matrices = self._get_kernel(self.X_, X_2d)
         if self.kernel == 'knn':
             probabilities = []
@@ -205,10 +218,9 @@ class BaseLabelPropagation(six.with_metaclass(ABCMeta, BaseEstimator,
         -------
         self : returns an instance of self.
         """
-        if sparse.isspmatrix(X):
-            self.X_ = X
-        else:
-            self.X_ = np.asarray(X)
+        X, y = check_X_y(X, y)
+        self.X_ = X
+        check_classification_targets(y)
 
         # actual graph construction (implementations should override this)
         graph_matrix = self._build_graph()
@@ -242,7 +254,7 @@ class BaseLabelPropagation(six.with_metaclass(ABCMeta, BaseEstimator,
         if sparse.isspmatrix(graph_matrix):
             graph_matrix = graph_matrix.tocsr()
         while (_not_converged(self.label_distributions_, l_previous, self.tol)
-                and remaining_iter > 1):
+               and remaining_iter > 1):
             l_previous = self.label_distributions_
             self.label_distributions_ = safe_sparse_dot(
                 graph_matrix, self.label_distributions_)
@@ -257,42 +269,53 @@ class BaseLabelPropagation(six.with_metaclass(ABCMeta, BaseEstimator,
         transduction = self.classes_[np.argmax(self.label_distributions_,
                                                axis=1)]
         self.transduction_ = transduction.ravel()
+        self.n_iter_ = self.max_iter - remaining_iter
         return self
 
 
 class LabelPropagation(BaseLabelPropagation):
     """Label Propagation classifier
 
+    Read more in the :ref:`User Guide <label_propagation>`.
+
     Parameters
     ----------
     kernel : {'knn', 'rbf'}
         String identifier for kernel function to use.
         Only 'rbf' and 'knn' kernels are currently supported..
+
     gamma : float
-      parameter for rbf kernel
+        Parameter for rbf kernel
+
     n_neighbors : integer > 0
-      parameter for knn kernel
+        Parameter for knn kernel
+
     alpha : float
-      clamping factor
+        Clamping factor
+
     max_iter : float
-      change maximum number of iterations allowed
+        Change maximum number of iterations allowed
+
     tol : float
-      Convergence tolerance: threshold to consider the system at steady
-      state
+        Convergence tolerance: threshold to consider the system at steady
+        state
 
     Attributes
     ----------
-    `X_` : array, shape = [n_samples, n_features]
+    X_ : array, shape = [n_samples, n_features]
         Input array.
 
-    `classes_` : array, shape = [n_classes]
+    classes_ : array, shape = [n_classes]
         The distinct labels used in classifying instances.
 
-    `label_distributions_` : array, shape = [n_samples, n_classes]
+    label_distributions_ : array, shape = [n_samples, n_classes]
         Categorical distribution for each item.
 
-    `transduction_` : array, shape = [n_samples]
+    transduction_ : array, shape = [n_samples]
         Label assigned to each item via the transduction.
+
+    n_iter_ : int
+        Number of iterations run.
 
     Examples
     --------
@@ -300,7 +323,7 @@ class LabelPropagation(BaseLabelPropagation):
     >>> from sklearn.semi_supervised import LabelPropagation
     >>> label_prop_model = LabelPropagation()
     >>> iris = datasets.load_iris()
-    >>> random_unlabeled_points = np.where(np.random.random_integers(0, 1,
+    >>> random_unlabeled_points = np.where(np.random.randint(0, 2,
     ...    size=len(iris.target)))
     >>> labels = np.copy(iris.target)
     >>> labels[random_unlabeled_points] = -1
@@ -318,6 +341,7 @@ class LabelPropagation(BaseLabelPropagation):
     --------
     LabelSpreading : Alternate label propagation strategy more robust to noise
     """
+
     def _build_graph(self):
         """Matrix representing a fully connected graph between each sample
 
@@ -342,36 +366,50 @@ class LabelSpreading(BaseLabelPropagation):
     but uses affinity matrix based on the normalized graph Laplacian
     and soft clamping across the labels.
 
+    Read more in the :ref:`User Guide <label_propagation>`.
+
     Parameters
     ----------
     kernel : {'knn', 'rbf'}
         String identifier for kernel function to use.
         Only 'rbf' and 'knn' kernels are currently supported.
+
     gamma : float
       parameter for rbf kernel
+
     n_neighbors : integer > 0
       parameter for knn kernel
+
     alpha : float
       clamping factor
+
     max_iter : float
       maximum number of iterations allowed
+
     tol : float
       Convergence tolerance: threshold to consider the system at steady
       state
 
+    n_jobs : int, optional (default = 1)
+        The number of parallel jobs to run.
+        If ``-1``, then the number of jobs is set to the number of CPU cores.
+
     Attributes
     ----------
-    `X_` : array, shape = [n_samples, n_features]
+    X_ : array, shape = [n_samples, n_features]
         Input array.
 
-    `classes_` : array, shape = [n_classes]
+    classes_ : array, shape = [n_classes]
         The distinct labels used in classifying instances.
 
-    `label_distributions_` : array, shape = [n_samples, n_classes]
+    label_distributions_ : array, shape = [n_samples, n_classes]
         Categorical distribution for each item.
 
-    `transduction_` : array, shape = [n_samples]
+    transduction_ : array, shape = [n_samples]
         Label assigned to each item via the transduction.
+
+    n_iter_ : int
+        Number of iterations run.
 
     Examples
     --------
@@ -379,7 +417,7 @@ class LabelSpreading(BaseLabelPropagation):
     >>> from sklearn.semi_supervised import LabelSpreading
     >>> label_prop_model = LabelSpreading()
     >>> iris = datasets.load_iris()
-    >>> random_unlabeled_points = np.where(np.random.random_integers(0, 1,
+    >>> random_unlabeled_points = np.where(np.random.randint(0, 2,
     ...    size=len(iris.target)))
     >>> labels = np.copy(iris.target)
     >>> labels[random_unlabeled_points] = -1
@@ -399,13 +437,14 @@ class LabelSpreading(BaseLabelPropagation):
     """
 
     def __init__(self, kernel='rbf', gamma=20, n_neighbors=7, alpha=0.2,
-                 max_iter=30, tol=1e-3):
+                 max_iter=30, tol=1e-3, n_jobs=1):
 
         # this one has different base parameters
         super(LabelSpreading, self).__init__(kernel=kernel, gamma=gamma,
                                              n_neighbors=n_neighbors,
                                              alpha=alpha, max_iter=max_iter,
-                                             tol=tol)
+                                             tol=tol,
+                                             n_jobs=n_jobs)
 
     def _build_graph(self):
         """Graph matrix for Label Spreading computes the graph laplacian"""

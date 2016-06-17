@@ -3,7 +3,7 @@
 A demo of K-Means clustering on the handwritten digits data
 ===========================================================
 
-In this example with compare the various initialization strategies for
+In this example we compare the various initialization strategies for
 K-means in terms of runtime and quality of the results.
 
 As the ground truth is known here, we also apply different cluster
@@ -93,11 +93,11 @@ kmeans = KMeans(init='k-means++', n_clusters=n_digits, n_init=10)
 kmeans.fit(reduced_data)
 
 # Step size of the mesh. Decrease to increase the quality of the VQ.
-h = .02     # point in the mesh [x_min, m_max]x[y_min, y_max].
+h = .02     # point in the mesh [x_min, x_max]x[y_min, y_max].
 
 # Plot the decision boundary. For that, we will assign a color to each
-x_min, x_max = reduced_data[:, 0].min() + 1, reduced_data[:, 0].max() - 1
-y_min, y_max = reduced_data[:, 1].min() + 1, reduced_data[:, 1].max() - 1
+x_min, x_max = reduced_data[:, 0].min() - 1, reduced_data[:, 0].max() + 1
+y_min, y_max = reduced_data[:, 1].min() - 1, reduced_data[:, 1].max() + 1
 xx, yy = np.meshgrid(np.arange(x_min, x_max, h), np.arange(y_min, y_max, h))
 
 # Obtain labels for each point in mesh. Use last trained model.
